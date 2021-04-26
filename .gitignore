@@ -1,0 +1,6 @@
+.idea/
+.vscode/
+cmake-build-debug/
+vgcore.**
+CMakeLists.txt
+practica_SCP
