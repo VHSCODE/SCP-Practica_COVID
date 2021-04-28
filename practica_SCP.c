@@ -3,6 +3,7 @@
 #include "time.h"
 #include "assert.h"
 
+#define DEBUG 1
 //######################### Definiciones de tipos #########################
 
 enum Estado
@@ -25,9 +26,12 @@ typedef struct
 {
     int edad; // Entre 0 y 110
     enum Estado estado;
-    double probabilidad_muerte; // Usado en caso estar infectado
+    double probabilidad_muerte; // Usado en caso de estar infectado
     Tupla posicion;             //Posicion x e y dentro del mundo
     Tupla velocidad;            // Representa el movimiento a realizar en cada eje. X e Y en nuestro caso.
+    #ifdef DEBUG
+    int identificador;
+    #endif
 } Persona;
 
 //##################################################
@@ -56,6 +60,7 @@ int main(int argc, char const *argv[])
     srand(time(NULL));
 
     long iteraciones = atol(argv[1]);
+
     Persona **mundo = malloc(TAMANNO_MUNDO * TAMANNO_MUNDO * sizeof(Persona *));
     if (mundo == NULL)
     {
@@ -75,16 +80,20 @@ int main(int argc, char const *argv[])
         dibujar_mundo(mundo);
     }
     
-
+    //FIXME Investigar porque tenemos un double free,( Seguramente porque hacemos free en simular_ciclo)
+    /**
     //Liberamos la memoria asignada
     int i, j;
     for (i = 0; i < TAMANNO_MUNDO; i++)
     {
         for (j = 0; j < TAMANNO_MUNDO; j++)
         {
-            free(mundo[i + j * TAMANNO_MUNDO]);
+            if(mundo[i +j * TAMANNO_MUNDO] != NULL)
+                free(mundo[i + j * TAMANNO_MUNDO]);
         }
     }
+    **/
+   
     free(mundo);
     return 0;
 }
@@ -121,9 +130,10 @@ void simular_ciclo(Persona **mundo)
                 {
                     if(mundo[nueva_pos.val1 + nueva_pos.val2 * TAMANNO_MUNDO] == NULL) //Ahora comprobamos que la casilla a moverse este vacia
                     {
+                        //mundo[nueva_pos.val1 + nueva_pos.val2 * TAMANNO_MUNDO] = malloc(sizeof(Persona));
                         mundo[nueva_pos.val1 + nueva_pos.val2 * TAMANNO_MUNDO] = persona_tmp;
-                        free(mundo[vieja_pos.val1 + vieja_pos.val2 * TAMANNO_MUNDO]);
-
+                        //free(mundo[vieja_pos.val1 + vieja_pos.val2 * TAMANNO_MUNDO]);
+                        mundo[vieja_pos.val1 + vieja_pos.val2 * TAMANNO_MUNDO] = NULL;
                         free(persona_tmp);
                     }
 
@@ -201,7 +211,16 @@ void dibujar_mundo(Persona **mundo)
                 if (mundo[i + j * TAMANNO_MUNDO]->estado == INFECTADO_SINTOMATICO)
                     printf("X      ");
                 else
+                {
+                    #ifdef DEBUG
+                    printf("%d      ",mundo[i + j * TAMANNO_MUNDO]->identificador);
+                    #endif
+
+                    #ifndef DEBUG
                     printf("1      ");
+                    #endif
+                }
+                    
             }
             else
             {
