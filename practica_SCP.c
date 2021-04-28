@@ -38,8 +38,8 @@ typedef struct
 
 //######################### Constantes #########################
 
-#define TAMANNO_MUNDO 10     //Tamaño de la matriz del mundo
-#define TAMANNO_POBLACION 20 //Cantidad de personas en el mundo
+#define TAMANNO_MUNDO 5    //Tamaño de la matriz del mundo
+#define TAMANNO_POBLACION 2 //Cantidad de personas en el mundo
 
 #define VELOCIDAD_MAX 5 //Define la velocidad maxima a la que una persona podra viajar por el mundo. El numero indica el numero de "casillas"
 
@@ -70,18 +70,20 @@ int main(int argc, char const *argv[])
 
     inicializar_mundo(mundo);
 
+    printf("Situacion inicial\n");
+
+    dibujar_mundo(mundo);
     int iteraciones_realizadas = 0;
 
     for (iteraciones_realizadas; iteraciones_realizadas < iteraciones; iteraciones_realizadas++)
     {
         simular_ciclo(mundo);
 
-        printf("Iteracion %d: \n",iteraciones_realizadas);
+        printf("Iteracion %d: \n",iteraciones_realizadas + 1);
         dibujar_mundo(mundo);
     }
-    
-    //FIXME Investigar porque tenemos un double free,( Seguramente porque hacemos free en simular_ciclo)
-    /**
+
+
     //Liberamos la memoria asignada
     int i, j;
     for (i = 0; i < TAMANNO_MUNDO; i++)
@@ -92,53 +94,54 @@ int main(int argc, char const *argv[])
                 free(mundo[i + j * TAMANNO_MUNDO]);
         }
     }
-    **/
-   
+
     free(mundo);
     return 0;
 }
 
 void simular_ciclo(Persona **mundo)
 {
-    int i = 0;
-    int j = 0;
-
-    for (i; i < TAMANNO_MUNDO; i++)
+    int i,j;
+    for (i = 0; i < TAMANNO_MUNDO; i++)
     {
-        for (j; j < TAMANNO_MUNDO; j++)
+        for (j = 0; j < TAMANNO_MUNDO; j++)
         {
             if(mundo[i +j * TAMANNO_MUNDO] != NULL)
             {
 
-                //Asignamos una velocidad aleatoria entre 1 y VELOCIDAD_MAX
 
-                mundo[i +j * TAMANNO_MUNDO]->velocidad.val1 = random_interval(-VELOCIDAD_MAX, VELOCIDAD_MAX);
-                mundo[i +j * TAMANNO_MUNDO]->velocidad.val2 = random_interval(-VELOCIDAD_MAX, VELOCIDAD_MAX);             
                 Persona* persona_tmp =  mundo[i +j * TAMANNO_MUNDO];
-                
-                Tupla nueva_pos = persona_tmp->posicion;
-                Tupla vieja_pos = persona_tmp->posicion;
 
-                
 
-                nueva_pos.val1 = nueva_pos.val1 +  mundo[i +j * TAMANNO_MUNDO]->velocidad.val1;
-                nueva_pos.val2 = nueva_pos.val2 +  mundo[i +j * TAMANNO_MUNDO]->velocidad.val1;
-                
-                //Comprobamos si el movimiento es posible
 
-                if((nueva_pos.val1 >= 0 && nueva_pos.val1 < TAMANNO_MUNDO) && (nueva_pos.val2 >= 0 && nueva_pos.val2 < TAMANNO_MUNDO)) //Primero comprobamos que la posicion sea valida dentro de la matriz 2D
+                int flag = 0;
+                do //Este bucle se encarga de que cada persona se mueva, si no es capaz de moverse, se le asignara una nueva velocidad, para que este pueda moverse por el mundo.
                 {
-                    if(mundo[nueva_pos.val1 + nueva_pos.val2 * TAMANNO_MUNDO] == NULL) //Ahora comprobamos que la casilla a moverse este vacia
-                    {
-                        //mundo[nueva_pos.val1 + nueva_pos.val2 * TAMANNO_MUNDO] = malloc(sizeof(Persona));
-                        mundo[nueva_pos.val1 + nueva_pos.val2 * TAMANNO_MUNDO] = persona_tmp;
-                        //free(mundo[vieja_pos.val1 + vieja_pos.val2 * TAMANNO_MUNDO]);
-                        mundo[vieja_pos.val1 + vieja_pos.val2 * TAMANNO_MUNDO] = NULL;
-                        free(persona_tmp);
-                    }
+                    Tupla nueva_pos = persona_tmp->posicion;
+                    Tupla vieja_pos = persona_tmp->posicion;
 
-                    //TODO Quizas randomizar otra vez el vector de velocidad si el movimiento no es posible ???
-                }
+
+                    //Asignamos una velocidad aleatoria entre -VELOCIDAD_MAX y VELOCIDAD_MAX
+                    persona_tmp->velocidad.val1 = random_interval(-VELOCIDAD_MAX, VELOCIDAD_MAX);
+                    persona_tmp->velocidad.val2 = random_interval(-VELOCIDAD_MAX, VELOCIDAD_MAX);
+
+                    nueva_pos.val1 = nueva_pos.val1 + persona_tmp->velocidad.val1;
+                    nueva_pos.val2 = nueva_pos.val2 +  persona_tmp->velocidad.val2;
+
+                    //Comprobamos si el movimiento es posible
+
+                    if((nueva_pos.val1 >= 0 && nueva_pos.val1 < TAMANNO_MUNDO) && (nueva_pos.val2 >= 0 && nueva_pos.val2 < TAMANNO_MUNDO)) //Primero comprobamos que la posicion sea valida dentro de la matriz 2D
+                    {
+                        if(mundo[nueva_pos.val1 + nueva_pos.val2 * TAMANNO_MUNDO] == NULL) //Ahora comprobamos que la casilla a moverse este vacia
+                        {
+                            
+                            persona_tmp->posicion = nueva_pos;
+                            mundo[nueva_pos.val1 + nueva_pos.val2 * TAMANNO_MUNDO] = persona_tmp;
+                            mundo[vieja_pos.val1 + vieja_pos.val2 * TAMANNO_MUNDO] = NULL;
+                            flag = 1;
+                        }
+                    }
+                } while (flag == 0);
             }
         }
     }
@@ -154,12 +157,19 @@ void inicializar_mundo(Persona **mundo)
             mundo[i + j * TAMANNO_MUNDO] = NULL;
         }
     }
+
+
+
     k = 0; //Usado para indexar el vector de las posiciones
     Tupla posiciones_asignadas[TAMANNO_POBLACION] = {{0, 0}};
     for (i = 0; i < TAMANNO_POBLACION; i++)
     {
         Persona *persona_tmp = malloc(sizeof(Persona));
         persona_tmp->edad = random_interval(0,110);
+
+        #ifdef DEBUG
+        persona_tmp->identificador = i + 1;
+        #endif
 
         Tupla pos;
 
@@ -220,7 +230,7 @@ void dibujar_mundo(Persona **mundo)
                     printf("1      ");
                     #endif
                 }
-                    
+
             }
             else
             {
