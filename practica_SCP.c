@@ -3,7 +3,14 @@
 #include "time.h"
 #include "assert.h"
 
-#define DEBUG 1
+
+/**
+ * Utilidad que simula la expansion del Virus T en la poblacion de Raccoon City. 
+ * 
+ * Desarrollado por la Corporacion Umbrella
+ * 
+ **/
+#define DEBUG 1 //Usado durante el desarrollo para diferenciar entre diferentes personas.
 //######################### Definiciones de tipos #########################
 
 enum Estado
@@ -38,8 +45,8 @@ typedef struct
 
 //######################### Constantes #########################
 
-#define TAMANNO_MUNDO 5    //Tamaño de la matriz del mundo
-#define TAMANNO_POBLACION 2 //Cantidad de personas en el mundo
+#define TAMANNO_MUNDO 10    //Tamaño de la matriz del mundo
+#define TAMANNO_POBLACION 20 //Cantidad de personas en el mundo
 
 #define VELOCIDAD_MAX 5 //Define la velocidad maxima a la que una persona podra viajar por el mundo. El numero indica el numero de "casillas"
 
@@ -59,12 +66,21 @@ int main(int argc, char const *argv[])
 
     srand(time(NULL));
 
-    long iteraciones = atol(argv[1]);
 
-    Persona **mundo = malloc(TAMANNO_MUNDO * TAMANNO_MUNDO * sizeof(Persona *));
+    if(argc < 2)
+    {
+        printf("Uso: ./practica_scp <numero_de_iteraciones>\n");
+        return 0;
+    }
+
+
+    long iteraciones = atol(argv[1]); //Numero de iteraciones a realizar.
+
+
+    Persona **mundo = malloc(TAMANNO_MUNDO * TAMANNO_MUNDO * sizeof(Persona *)); // "Tablero" que representara el mundo en una matriz 2D
     if (mundo == NULL)
     {
-        printf("Error al asignar memoria al mundo");
+        printf("Error al asignar memoria al mundo\n");
         return 1;
     }
 
@@ -73,6 +89,8 @@ int main(int argc, char const *argv[])
     printf("Situacion inicial\n");
 
     dibujar_mundo(mundo);
+    
+    
     int iteraciones_realizadas = 0;
 
     for (iteraciones_realizadas; iteraciones_realizadas < iteraciones; iteraciones_realizadas++)
@@ -82,6 +100,8 @@ int main(int argc, char const *argv[])
         printf("Iteracion %d: \n",iteraciones_realizadas + 1);
         dibujar_mundo(mundo);
     }
+
+    //TODO Recoger metricas de la simulacion: Cantidad de muertes, supervivientes, posiciones de los mismos, etc...
 
 
     //Liberamos la memoria asignada
@@ -99,6 +119,9 @@ int main(int argc, char const *argv[])
     return 0;
 }
 
+/**
+ * Esta funcion se encarga simular un ciclo en la simulacion: Mover a las personas, infectar a los demas, muertes, etc...
+ **/
 void simular_ciclo(Persona **mundo)
 {
     int i,j;
@@ -106,14 +129,10 @@ void simular_ciclo(Persona **mundo)
     {
         for (j = 0; j < TAMANNO_MUNDO; j++)
         {
-            if(mundo[i +j * TAMANNO_MUNDO] != NULL)
+            if(mundo[i +j * TAMANNO_MUNDO] != NULL) //FIXME esta busqueda se puede optimizar si guardamos las posiciones de las personas que estan en la matriz... :)
             {
-
-
                 Persona* persona_tmp =  mundo[i +j * TAMANNO_MUNDO];
-
-
-
+                
                 int flag = 0;
                 do //Este bucle se encarga de que cada persona se mueva, si no es capaz de moverse, se le asignara una nueva velocidad, para que este pueda moverse por el mundo.
                 {
@@ -125,16 +144,16 @@ void simular_ciclo(Persona **mundo)
                     persona_tmp->velocidad.val1 = random_interval(-VELOCIDAD_MAX, VELOCIDAD_MAX);
                     persona_tmp->velocidad.val2 = random_interval(-VELOCIDAD_MAX, VELOCIDAD_MAX);
 
+
+                    //Calculamos la nueva posicion de la persona
                     nueva_pos.val1 = nueva_pos.val1 + persona_tmp->velocidad.val1;
                     nueva_pos.val2 = nueva_pos.val2 +  persona_tmp->velocidad.val2;
 
                     //Comprobamos si el movimiento es posible
-
                     if((nueva_pos.val1 >= 0 && nueva_pos.val1 < TAMANNO_MUNDO) && (nueva_pos.val2 >= 0 && nueva_pos.val2 < TAMANNO_MUNDO)) //Primero comprobamos que la posicion sea valida dentro de la matriz 2D
                     {
                         if(mundo[nueva_pos.val1 + nueva_pos.val2 * TAMANNO_MUNDO] == NULL) //Ahora comprobamos que la casilla a moverse este vacia
                         {
-                            
                             persona_tmp->posicion = nueva_pos;
                             mundo[nueva_pos.val1 + nueva_pos.val2 * TAMANNO_MUNDO] = persona_tmp;
                             mundo[vieja_pos.val1 + vieja_pos.val2 * TAMANNO_MUNDO] = NULL;
@@ -147,6 +166,7 @@ void simular_ciclo(Persona **mundo)
     }
     //TODO implementar radio de infeccion e infectar
 }
+
 void inicializar_mundo(Persona **mundo)
 {
     int i, j, k;
@@ -185,7 +205,8 @@ void inicializar_mundo(Persona **mundo)
         posiciones_asignadas[k] = pos;
         k++;
         persona_tmp->posicion = pos;
-        if (i == 0)
+        
+        if (i == 0) //Elegimos el paciente 0
         {
             persona_tmp->estado = INFECTADO_SINTOMATICO;
             printf("Posicion infectado: (%d,%d)\n", persona_tmp->posicion.val1, persona_tmp->posicion.val2);
@@ -246,3 +267,7 @@ int random_interval(int min, int max)
 {
    return min + rand() / (RAND_MAX / (max - min + 1) + 1);
 }
+
+
+
+//Si has llegado hasta aqui, te has ganado una galleta 🍪
