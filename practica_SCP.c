@@ -10,10 +10,7 @@
  * 
  **/
 
-
-
 //#define DEBUG 1 //Usado durante el desarrollo para diferenciar entre diferentes personas.
-
 
 //######################### Definiciones de tipos #########################
 
@@ -40,6 +37,7 @@ typedef struct
     double probabilidad_muerte; // Usado en caso de estar infectado
     Tupla posicion;             //Posicion x e y dentro del mundo
     Tupla velocidad;            // Representa el movimiento a realizar en cada eje. X e Y en nuestro caso.
+    int ciclos_desde_infeccion; //Esto es usado para controlar el periodo de incubacion de una persona infectada
 #ifdef DEBUG
     int identificador;
 #endif
@@ -49,25 +47,27 @@ typedef struct
 
 //######################### Constantes #########################
 
-#define TAMANNO_MUNDO 1000    //Tamaño de la matriz del mundo
-#define TAMANNO_POBLACION 10000 //Cantidad de personas en el mundo
+#define TAMANNO_MUNDO 10      //Tamaño de la matriz del mundo
+#define TAMANNO_POBLACION 50 //Cantidad de personas en el mundo
 
 #define VELOCIDAD_MAX 5 //Define la velocidad maxima a la que una persona podra viajar por el mundo. El numero indica el numero de "casillas"
-#define RADIO 5        //Define el radio de infeccion de una persona infectada
+#define RADIO 1         //Define el radio de infeccion de una persona infectada
 #define PORCENTAJE_INMUNE 70
 #define PROBABILIDAD_CONTAGIO 50 //Define en porcentaje la probabilidad de infectar a alguien que este dentro del radio
-#define COMIENZO_VACUNACION 10 //Define la iteración en la que queremos comenzar a vacunar a gente
+#define COMIENZO_VACUNACION 1   //Define la iteración en la que queremos comenzar a vacunar a gente
+#define PERIODO_INCUBACION 5
 //##################################################
 
 void dibujar_mundo(Persona **mundo);
 int comprobar_posicion(const Tupla posiciones_asignadas[TAMANNO_POBLACION], const Tupla posicion);
 void inicializar_mundo(Persona **mundo);
-void simular_ciclo(Persona **mundo, int vacunados_iteracion,int comenzar_vacunacion);
+void simular_ciclo(Persona **mundo);
 int random_interval(int min, int max);
 Tupla mover_persona(Persona **mundo, Persona *persona);
-void recoger_metricas(Persona** mundo);
+void recoger_metricas(Persona **mundo);
 void infectar(Persona **mundo, Tupla posicion_persona);
-void actualziar_estado(Persona **mundo, Tupla posicion_persona, int vacunar);
+void deberia_morir(Persona **mundo, Tupla posicion_persona);
+void vacunar(Persona **mundo);
 int probabilidad_muerte(int edad);
 
 int main(int argc, char const *argv[])
@@ -81,15 +81,22 @@ int main(int argc, char const *argv[])
         printf("Uso: ./practica_scp <numero_de_iteraciones>\n");
         return 0;
     }
-
     long iteraciones = atol(argv[1]); //Numero de iteraciones a realizar.
 
-    int total_vacunados = (TAMANNO_POBLACION*PORCENTAJE_INMUNE)/100;
-    int vacunados_iteracion = total_vacunados/(iteraciones-COMIENZO_VACUNACION);                //Calculos necesarios para saber cuantas personas hay que vacunar en cada iteracion
-    if (vacunados_iteracion == 0)                                                               //Falta control de errores, si COMIENZO_VACUNACION > iteraciones, F.
-        vacunados_iteracion = 1;
 
-    printf("Total vacunados: %d, Vacunados por iteracion: %d \n",total_vacunados, vacunados_iteracion);
+    if(COMIENZO_VACUNACION >= iteraciones)
+    {
+         printf("[Error] El numero de iteraciones debe ser mayor al umbral de comienzo de vacunacion \n");
+         return 0;
+    }
+    int total_vacunados = (TAMANNO_POBLACION * PORCENTAJE_INMUNE) / 100;
+
+    int gente_a_vacunar_por_iteracion = total_vacunados / (iteraciones - COMIENZO_VACUNACION); //Calculos necesarios para saber cuantas personas hay que vacunar en cada iteracion
+
+    if (gente_a_vacunar_por_iteracion == 0) //Falta control de errores, si COMIENZO_VACUNACION > iteraciones, F.
+        gente_a_vacunar_por_iteracion = 1;
+
+    //printf("Total vacunados: %d, Vacunados por iteracion: %d \n", total_vacunados, gente_a_vacunar_por_iteracion);
 
     Persona **mundo = malloc(TAMANNO_MUNDO * TAMANNO_MUNDO * sizeof(Persona *)); // "Tablero" que representara el mundo en una matriz 2D
     if (mundo == NULL)
@@ -100,31 +107,40 @@ int main(int argc, char const *argv[])
 
     inicializar_mundo(mundo);
 
-    #ifdef DEBUG
+#ifdef DEBUG
     printf("Situacion inicial\n");
 
     dibujar_mundo(mundo);
-    #endif
+#endif
     int iteraciones_realizadas = 0;
     int comenzar_vacunacion = 0;
 
     for (iteraciones_realizadas; iteraciones_realizadas < iteraciones; iteraciones_realizadas++)
     {
-        if (iteraciones_realizadas > COMIENZO_VACUNACION-1)
-            comenzar_vacunacion = 1;
+        simular_ciclo(mundo);
 
-        simular_ciclo(mundo,vacunados_iteracion,comenzar_vacunacion);
+        if (iteraciones_realizadas > COMIENZO_VACUNACION - 1) //Si llegamos al umbral, comenzamos el proceso de vacunacion
+        {
+            int personas_vacunadas = 0;
 
-        #ifdef DEBUG
+            while (personas_vacunadas < gente_a_vacunar_por_iteracion)
+            {
+                vacunar(mundo); //Vacunamos a una persona aleatoria. //FIXME ARREGLAR ESTO, TARDA DEMASIADO AL SER ACCESO ALEATORIO AL MUNDO
+                personas_vacunadas++;
+            }
+        }
+
+#ifdef DEBUG
         printf("Iteracion %d: \n", iteraciones_realizadas + 1);
-        
+
         dibujar_mundo(mundo);
-        #endif
+#endif
     }
 
     //TODO Recoger metricas de la simulacion: Cantidad de muertes, supervivientes, posiciones de los mismos, etc...
 
     recoger_metricas(mundo);
+
     //Liberamos la memoria asignada
     int i, j;
     for (i = 0; i < TAMANNO_MUNDO; i++)
@@ -141,13 +157,32 @@ int main(int argc, char const *argv[])
 }
 
 /**
+ * Vacuna a una persona sana aleatoria del mundo
+ **/
+void vacunar(Persona **mundo)
+{
+    int flag = 0;
+    do
+    {
+        Tupla pos_rand;
+        pos_rand.val1 = random_interval(0, TAMANNO_MUNDO -1);
+        pos_rand.val2 = random_interval(0, TAMANNO_MUNDO -1);
+        if (mundo[pos_rand.val1 + pos_rand.val2 * TAMANNO_MUNDO] != NULL)
+        {
+            if (mundo[pos_rand.val1 + pos_rand.val2 * TAMANNO_MUNDO]->estado == SANO)
+            {
+                mundo[pos_rand.val1 + pos_rand.val2 * TAMANNO_MUNDO]->estado = VACUNADO;
+                flag = 1;
+            }
+        }
+    } while (flag == 0);
+}
+/**
  * Esta funcion se encarga simular un ciclo en la simulacion: Mover a las personas, infectar a los demas, muertes, etc...
  **/
-void simular_ciclo(Persona **mundo, int vacunados_iteracion,int comenzar_vacunacion)
+void simular_ciclo(Persona **mundo)
 {
     int i, j;
-    int vacunados = 0;
-    int vacunar = 0;
     for (i = 0; i < TAMANNO_MUNDO; i++)
     {
         for (j = 0; j < TAMANNO_MUNDO; j++)
@@ -158,26 +193,30 @@ void simular_ciclo(Persona **mundo, int vacunados_iteracion,int comenzar_vacunac
 
                 Tupla pos_persona = mover_persona(mundo, persona_tmp); //Movemos la persona en el mundo
 
-                if (persona_tmp->estado == INFECTADO_ASINTOMATICO || persona_tmp->estado == INFECTADO_SINTOMATICO)
+                switch (persona_tmp->estado)
                 {
+                case INFECTADO_SINTOMATICO: //Solo los sintomaticos pueden infectar
                     infectar(mundo, pos_persona);
-                    if(comenzar_vacunacion==1){         //Comprobamos si es una iteracion en la que queremos vacunar
-                        if (vacunados < vacunados_iteracion)    //Comprobamos si hemos vacunado a todas las personas que queremos en esta iteracion
-                        {
-                            vacunar = 1;
-                            vacunados++;
-                        }
-                    }
 
-                    actualziar_estado(mundo, pos_persona,vacunar);
+                    deberia_morir(mundo, pos_persona);
+                    break;
+
+                case INFECTADO_ASINTOMATICO:
+                    if (persona_tmp->ciclos_desde_infeccion >= PERIODO_INCUBACION)
+                    {
+                        persona_tmp->estado = INFECTADO_SINTOMATICO;
+                    }
+                    else
+                        persona_tmp->ciclos_desde_infeccion++;
+                default:
+                    break;
                 }
             }
         }
     }
 }
 
-
-void recoger_metricas(Persona** mundo)
+void recoger_metricas(Persona **mundo)
 {
     int cantidad_infectados = 0;
     int cantidad_fallecidos = 0;
@@ -189,15 +228,15 @@ void recoger_metricas(Persona** mundo)
         {
             if (mundo[i + j * TAMANNO_MUNDO] != NULL) //FIXME esta busqueda se puede optimizar si guardamos las posiciones de las personas que estan en la matriz... :)
             {
-                if(mundo[i + j * TAMANNO_MUNDO]->estado == INFECTADO_ASINTOMATICO || mundo[i + j * TAMANNO_MUNDO]->estado == INFECTADO_SINTOMATICO)
+                if (mundo[i + j * TAMANNO_MUNDO]->estado == INFECTADO_ASINTOMATICO || mundo[i + j * TAMANNO_MUNDO]->estado == INFECTADO_SINTOMATICO)
                 {
                     cantidad_infectados++;
                 }
-                else if(mundo[i + j * TAMANNO_MUNDO]->estado == FALLECIDO)
+                else if (mundo[i + j * TAMANNO_MUNDO]->estado == FALLECIDO)
                 {
                     cantidad_fallecidos++;
                 }
-                else if(mundo[i + j * TAMANNO_MUNDO]->estado == VACUNADO)
+                else if (mundo[i + j * TAMANNO_MUNDO]->estado == VACUNADO)
                 {
                     cantidad_vacunados++;
                 }
@@ -205,8 +244,8 @@ void recoger_metricas(Persona** mundo)
         }
     }
 
-    printf("Tamanno Poblacion : %d, Infectados: %d, Fallecidos: %d, Vacunados: %d\n",TAMANNO_POBLACION, cantidad_infectados, cantidad_fallecidos, cantidad_vacunados);
-    if(TAMANNO_POBLACION == cantidad_fallecidos)
+    printf("Tamanno Poblacion : %d, Infectados: %d, Fallecidos: %d, Vacunados: %d\n", TAMANNO_POBLACION, cantidad_infectados, cantidad_fallecidos, cantidad_vacunados);
+    if (TAMANNO_POBLACION == cantidad_fallecidos)
     {
         printf("Bye Bye Raccoon City\n");
     }
@@ -228,37 +267,30 @@ void infectar(Persona **mundo, Tupla posicion_persona)
 
             if ((posible_persona.val1 >= 0 && posible_persona.val1 < TAMANNO_MUNDO) && (posible_persona.val2 >= 0 && posible_persona.val2 < TAMANNO_MUNDO))
             {
-                if(mundo[posible_persona.val1 + posible_persona.val2 * TAMANNO_MUNDO] != NULL)
+                if (mundo[posible_persona.val1 + posible_persona.val2 * TAMANNO_MUNDO] != NULL)
                 {
-                    if(mundo[posible_persona.val1 + posible_persona.val2 * TAMANNO_MUNDO]->estado == SANO)
+                    if (mundo[posible_persona.val1 + posible_persona.val2 * TAMANNO_MUNDO]->estado == SANO)
                     {
-                        int infectar = random_interval(0,100);
+                        int infectar = random_interval(0, 100);
                         if (infectar <= PROBABILIDAD_CONTAGIO)
                         {
-                            mundo[posible_persona.val1 + posible_persona.val2 * TAMANNO_MUNDO]->estado = INFECTADO_SINTOMATICO;
+                            mundo[posible_persona.val1 + posible_persona.val2 * TAMANNO_MUNDO]->estado = INFECTADO_ASINTOMATICO;
+                            mundo[posible_persona.val1 + posible_persona.val2 * TAMANNO_MUNDO]->ciclos_desde_infeccion = 0;
                         }
-                        
                     }
-                        
                 }
             }
-            
         }
     }
 }
-void actualziar_estado(Persona **mundo, Tupla posicion_persona,int vacunar)
+void deberia_morir(Persona **mundo, Tupla posicion_persona)
 {
-    int muerto,prob_muerte,vacunado;
-    muerto = random_interval(0,100000);
+    int muerto, prob_muerte, vacunado;
+    muerto = random_interval(0, 100000);
     prob_muerte = mundo[posicion_persona.val1 + posicion_persona.val2 * TAMANNO_MUNDO]->probabilidad_muerte;
     if (muerto < prob_muerte)
     {
         mundo[posicion_persona.val1 + posicion_persona.val2 * TAMANNO_MUNDO]->estado = FALLECIDO;
-    }
-        
-    else if (vacunar == 1)
-    {
-        mundo[posicion_persona.val1 + posicion_persona.val2 * TAMANNO_MUNDO]->estado = VACUNADO;
     }
 }
 Tupla mover_persona(Persona **mundo, Persona *persona)
@@ -290,7 +322,7 @@ Tupla mover_persona(Persona **mundo, Persona *persona)
             }
         }
     } while (flag == 0);
-}  
+}
 void inicializar_mundo(Persona **mundo)
 {
     int i, j, k;
