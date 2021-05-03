@@ -10,7 +10,7 @@
  * 
  **/
 
-//#define DEBUG 1 //Usado durante el desarrollo para diferenciar entre diferentes personas.
+//#define DEBUG 1 //Usado durante el desarrollo para diferenciar entre diferentes personas y activar varios printf
 
 //######################### Definiciones de tipos #########################
 
@@ -24,6 +24,14 @@ enum Estado
     FALLECIDO
 };
 
+const char* nombres_estados[] =
+{   "SANO",
+    "INFECTADO_ASINTOMATICO",
+    "INFECTADO_SINTOMATICO",
+    "RECUPERADO",
+    "VACUNADO",
+    "FALLECIDO"
+};
 typedef struct
 {
     int val1;
@@ -58,7 +66,7 @@ typedef struct
 #define PERIODO_INCUBACION 14  //Define cuantos ciclos debe durar la incubacion del virus, hasta que este sea capaz de infectar
 #define PERIODO_RECUPERACION 20 // Define cuantos ciclos se tarda en recuperarse del virus
 
-//Defines para la barra de progreso
+//Definiciones para la barra de progreso
 #define PBSTR "||||||||||||||||||||||||||||||||||||||||||||||||||||||||||||"
 #define PBWIDTH 60 // Anchura de la barra
 //##################################################
@@ -75,22 +83,30 @@ void deberia_morir(Persona **mundo, Tupla posicion_persona);
 void vacunar(Persona **mundo);
 int probabilidad_muerte(int edad);
 void printProgress(double percentage);
+void guardar_estado(Persona **mundo, long iteracion);
+
+
 int main(int argc, char const *argv[])
 {
     assert(TAMANNO_MUNDO * TAMANNO_MUNDO > TAMANNO_POBLACION);
 
     srand(time(NULL));
 
-    if (argc < 2)
+    if (argc < 3)
     {
-        printf("Uso: ./practica_scp <numero_de_iteraciones>\n");
+        printf("Uso: ./practica_scp <numero_de_iteraciones> <frecuencia_batches>\n");
         return 0;
     }
     long iteraciones = atol(argv[1]); //Numero de iteraciones a realizar.
-
+    long frecuencia_batches = atol(argv[2]); //Cada cuanto se debe guardar el estado del mundo
     if (COMIENZO_VACUNACION >= iteraciones)
     {
         printf("[Error] El numero de iteraciones debe ser mayor al umbral de comienzo de vacunacion y viceversa\n");
+        return 0;
+    }
+    else if(frecuencia_batches > iteraciones)
+    {
+        printf("[Error] La frecuencia de guardado de datos debe de ser menor a la cantidad de iteraciones a realizar\n");
         return 0;
     }
 
@@ -117,10 +133,14 @@ int main(int argc, char const *argv[])
 
     dibujar_mundo(mundo);
 #endif
-    int iteraciones_realizadas = 0;
+    long iteraciones_realizadas = 0;
     int comenzar_vacunacion = 0; 
     int gente_vacunada_en_ciclo = 0;
     double porcentaje_completado = 0.0;
+
+
+    long deberia_guardar = frecuencia_batches;
+ 
 
     printf("Comienza la simulacion...\n");
     printProgress(porcentaje_completado);
@@ -130,6 +150,14 @@ int main(int argc, char const *argv[])
             comenzar_vacunacion = 1;
         
         simular_ciclo(mundo,comenzar_vacunacion,gente_a_vacunar_por_iteracion);
+
+
+        deberia_guardar--;
+        if(deberia_guardar == 0 || iteraciones_realizadas == 0)
+        {
+            guardar_estado(mundo,iteraciones_realizadas + 1);
+            deberia_guardar = frecuencia_batches;
+        }
         porcentaje_completado = (double) iteraciones_realizadas / (double )iteraciones;
         printProgress(porcentaje_completado);
 
@@ -403,6 +431,28 @@ int comprobar_posicion(const Tupla posiciones_asignadas[TAMANNO_POBLACION], cons
     return 0;
 }
 
+
+void guardar_estado(Persona **mundo, long iteracion)
+{
+    int i, j;
+
+    FILE* archivo = fopen("practica_SCP.pos","a");
+    fprintf(archivo,"ITERACION %d TAMANNO %d POBLACION %d\n",iteracion, TAMANNO_MUNDO, TAMANNO_POBLACION);
+    fflush(archivo);
+    for (i = 0; i < TAMANNO_MUNDO; i++)
+    {
+        for (j = 0; j < TAMANNO_MUNDO; j++)
+        {
+            if (mundo[i + j * TAMANNO_MUNDO] != NULL)
+            {
+                fprintf(archivo,"%d %d %s\n", mundo[i + j * TAMANNO_MUNDO]->posicion.val1, mundo[i + j * TAMANNO_MUNDO]->posicion.val2, nombres_estados[mundo[i + j * TAMANNO_MUNDO]->estado]);
+                fflush(archivo);
+            }
+        }
+    }
+
+    fclose(archivo);
+}
 void dibujar_mundo(Persona **mundo)
 {
     int i, j;
