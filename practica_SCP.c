@@ -52,9 +52,9 @@ typedef struct
 
 #define VELOCIDAD_MAX 5 //Define la velocidad maxima a la que una persona podra viajar por el mundo. El numero indica el numero de "casillas"
 #define RADIO 20         //Define el radio de infeccion de una persona infectada
-#define PORCENTAJE_INMUNE 70
+#define PORCENTAJE_INMUNE 70    //Define el porcentaje de población que queremos vacunar para el final de la ejecucion
 #define PROBABILIDAD_CONTAGIO 50 //Define en porcentaje la probabilidad de infectar a alguien que este dentro del radio
-#define COMIENZO_VACUNACION 500    //Define la iteración en la que queremos comenzar a vacunar a gente
+#define COMIENZO_VACUNACION 10    //Define la iteración en la que queremos comenzar a vacunar a gente
 #define PERIODO_INCUBACION 14  //Define cuantos ciclos debe durar la incubacion del virus, hasta que este sea capaz de infectar
 #define PERIODO_RECUPERACION 20 // Define cuantos ciclos se tarda en recuperarse del virus
 
@@ -98,7 +98,7 @@ int main(int argc, char const *argv[])
 
     int gente_a_vacunar_por_iteracion = total_vacunados / (iteraciones - COMIENZO_VACUNACION); //Calculos necesarios para saber cuantas personas hay que vacunar en cada iteracion
 
-    if (gente_a_vacunar_por_iteracion == 0) //Falta control de errores, si COMIENZO_VACUNACION > iteraciones, F.
+    if (gente_a_vacunar_por_iteracion == 0) 
         gente_a_vacunar_por_iteracion = 1;
 
    
@@ -141,7 +141,6 @@ int main(int argc, char const *argv[])
     }
     printProgress(1.0);
     printf("\nTerminado!!!\n");
-    //TODO Recoger metricas de la simulacion: Cantidad de muertes, supervivientes, posiciones de los mismos, etc...
 
     recoger_metricas(mundo);
 
@@ -253,6 +252,12 @@ void recoger_metricas(Persona **mundo)
             }
         }
     }
+    
+    //Dejamos los resultados finales de las metricas en el fichero "practica_SCP.metricas"
+    FILE* fichero;
+    fichero = fopen("practica_SCP.metricas", "wt");
+    fprintf(fichero, "Tamanno Poblacion : %d, Infectados: %d, Fallecidos: %d, Vacunados: %d, Recuperados: %d\n", TAMANNO_POBLACION, cantidad_infectados, cantidad_fallecidos, cantidad_vacunados,cantidad_recuperados);
+    fclose(fichero);
 
     printf("Tamanno Poblacion : %d, Infectados: %d, Fallecidos: %d, Vacunados: %d, Recuperados: %d\n", TAMANNO_POBLACION, cantidad_infectados, cantidad_fallecidos, cantidad_vacunados,cantidad_recuperados);
     if (TAMANNO_POBLACION == cantidad_fallecidos)
