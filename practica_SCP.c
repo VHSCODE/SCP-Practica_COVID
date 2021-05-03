@@ -2,7 +2,8 @@
 #include "stdio.h"
 #include "time.h"
 #include "assert.h"
-
+#include "unistd.h"
+#include "sys/resource.h"
 /**
  * Utilidad que simula la expansion del Virus T en la poblacion de Raccoon City. 
  * 
@@ -11,7 +12,6 @@
  **/
 
 //#define DEBUG 1 //Usado durante el desarrollo para diferenciar entre diferentes personas y activar varios printf
-
 //######################### Definiciones de tipos #########################
 
 enum Estado
@@ -142,8 +142,15 @@ int main(int argc, char const *argv[])
     long deberia_guardar = frecuencia_batches;
  
 
+    clock_t inicio, final;
+
+    double tiempo_transcurrido;
+
+   
     printf("Comienza la simulacion...\n");
     printProgress(porcentaje_completado);
+    
+    inicio = clock();
     for (iteraciones_realizadas; iteraciones_realizadas < iteraciones; iteraciones_realizadas++)
     {
         if (iteraciones_realizadas > COMIENZO_VACUNACION - 1) //Si llegamos al umbral, comenzamos el proceso de vacunacion
@@ -158,6 +165,8 @@ int main(int argc, char const *argv[])
             guardar_estado(mundo,iteraciones_realizadas + 1);
             deberia_guardar = frecuencia_batches;
         }
+        
+        
         porcentaje_completado = (double) iteraciones_realizadas / (double )iteraciones;
         printProgress(porcentaje_completado);
 
@@ -167,11 +176,23 @@ int main(int argc, char const *argv[])
         dibujar_mundo(mundo);
 #endif
     }
+    final = clock();
+    tiempo_transcurrido = ((double)final - (double)inicio) / CLOCKS_PER_SEC;
     printProgress(1.0);
     printf("\nTerminado!!!\n");
 
     recoger_metricas(mundo);
 
+    printf("Tiempo transcurrido: %f segundos\n",tiempo_transcurrido);
+
+
+    struct rusage r_usage;
+
+    int ret = getrusage(RUSAGE_SELF,&r_usage);
+    if(ret != 0)
+        printf("Error obteniendo la cantidad de memoria usada\n");
+    else
+        printf("Uso de memoria: %ld kilobytes\n", r_usage.ru_maxrss);
     //Liberamos la memoria asignada
     int i, j;
     for (i = 0; i < TAMANNO_MUNDO; i++)
