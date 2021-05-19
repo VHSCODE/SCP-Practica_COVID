@@ -55,11 +55,11 @@ typedef struct
 
 //######################### Constantes #########################
 
-#define TAMANNO_MUNDO 1000     //Tamaño de la matriz del mundo
-#define TAMANNO_POBLACION 50000 //Cantidad de personas en el mundo
+#define TAMANNO_MUNDO 100     //Tamaño de la matriz del mundo
+#define TAMANNO_POBLACION 4000 //Cantidad de personas en el mundo
 
 #define VELOCIDAD_MAX 5 //Define la velocidad maxima a la que una persona podra viajar por el mundo. El numero indica el numero de "casillas"
-#define RADIO 20         //Define el radio de infeccion de una persona infectada
+#define RADIO 25         //Define el radio de infeccion de una persona infectada
 #define PORCENTAJE_INMUNE 70    //Define el porcentaje de población que queremos vacunar para el final de la ejecucion
 #define PROBABILIDAD_CONTAGIO 50 //Define en porcentaje la probabilidad de infectar a alguien que este dentro del radio
 #define COMIENZO_VACUNACION 10    //Define la iteración en la que queremos comenzar a vacunar a gente
