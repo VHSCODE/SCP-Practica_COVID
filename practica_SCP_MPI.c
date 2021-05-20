@@ -341,39 +341,21 @@ void recoger_metricas(Persona **mundo)
     }
 
     //El procesador 0 recoge los datos de los demás procesadores 
-    int rank;
-    for (rank=1; rank++; rank<world_size)
-    {
-        if (world_rank == rank)
-        {
-            printf("Soy %d, rank = %d y envio mis metricas\n", world_rank,rank);
-            fflush(stdout);
-            MPI_Send(recogida_metricas, 4, MPI_INT, 0, 0, MPI_COMM_WORLD);
-            MPI_Barrier(MPI_COMM_WORLD);
 
-        }
-    }
+
+    int metricas_totales[4];
+    MPI_Reduce(recogida_metricas, metricas_totales,4,MPI_INT,MPI_SUM,0,MPI_COMM_WORLD);
 
     if (world_rank == 0)
     {
-        int recogida_metricas_tmp[4];
-        for (i=1; i++; i<world_size)
-        {
-            MPI_Recv(recogida_metricas_tmp, 4, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-            recogida_metricas[0] += recogida_metricas_tmp[0];
-            recogida_metricas[1] += recogida_metricas_tmp[1];
-            recogida_metricas[2] += recogida_metricas_tmp[2];
-            recogida_metricas[3] += recogida_metricas_tmp[3];
-        }
-    
         //Dejamos los resultados finales de las metricas en el fichero "practica_SCP.metricas"
         FILE* fichero;
         fichero = fopen("practica_SCP.metricas", "wt");
-        fprintf(fichero, "Tamanno Poblacion : %d, Infectados: %d, Fallecidos: %d, Vacunados: %d, Recuperados: %d\n", TAMANNO_POBLACION, recogida_metricas[0], recogida_metricas[1], recogida_metricas[2],recogida_metricas[3]);
+        fprintf(fichero, "Tamanno Poblacion : %d, Infectados: %d, Fallecidos: %d, Vacunados: %d, Recuperados: %d\n", TAMANNO_POBLACION, metricas_totales[0], metricas_totales[1], metricas_totales[2],metricas_totales[3]);
         fclose(fichero);
 
-        printf("Tamanno Poblacion : %d, Infectados: %d, Fallecidos: %d, Vacunados: %d, Recuperados: %d\n", TAMANNO_POBLACION, recogida_metricas[0], recogida_metricas[1], recogida_metricas[2],recogida_metricas[3]);
-        if (TAMANNO_POBLACION == recogida_metricas[1])
+        printf("Tamanno Poblacion : %d, Infectados: %d, Fallecidos: %d, Vacunados: %d, Recuperados: %d\n", TAMANNO_POBLACION, metricas_totales[0], metricas_totales[1], metricas_totales[2],metricas_totales[3]);
+        if (TAMANNO_POBLACION == metricas_totales[1])
         {
             printf("Bye Bye Raccoon City\n");
         }
