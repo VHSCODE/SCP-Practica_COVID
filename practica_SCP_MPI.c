@@ -12,7 +12,7 @@
  * 
  **/
 
-//#define DEBUG 1 //Usado durante el desarrollo para diferenciar entre diferentes personas y activar varios printf
+#define DEBUG 1 //Usado durante el desarrollo para diferenciar entre diferentes personas y activar varios printf
 //######################### Definiciones de tipos #########################
 
 enum Estado
@@ -57,14 +57,14 @@ typedef struct
 
 //######################### Constantes #########################
 
-#define TAMANNO_MUNDO 100     //Tamaño de la matriz del mundo
-#define TAMANNO_POBLACION 4000 //Cantidad de personas en el mundo
+#define TAMANNO_MUNDO 10     //Tamaño de la matriz del mundo
+#define TAMANNO_POBLACION 20 //Cantidad de personas en el mundo
 
-#define VELOCIDAD_MAX 5 //Define la velocidad maxima a la que una persona podra viajar por el mundo. El numero indica el numero de "casillas"
-#define RADIO 25         //Define el radio de infeccion de una persona infectada
+#define VELOCIDAD_MAX 1 //Define la velocidad maxima a la que una persona podra viajar por el mundo. El numero indica el numero de "casillas"
+#define RADIO 1         //Define el radio de infeccion de una persona infectada
 #define PORCENTAJE_INMUNE 70    //Define el porcentaje de población que queremos vacunar para el final de la ejecucion
 #define PROBABILIDAD_CONTAGIO 50 //Define en porcentaje la probabilidad de infectar a alguien que este dentro del radio
-#define COMIENZO_VACUNACION 20    //Define la iteración en la que queremos comenzar a vacunar a gente
+#define COMIENZO_VACUNACION 4    //Define la iteración en la que queremos comenzar a vacunar a gente
 #define PERIODO_INCUBACION 14  //Define cuantos ciclos debe durar la incubacion del virus, hasta que este sea capaz de infectar
 #define PERIODO_RECUPERACION 20 // Define cuantos ciclos se tarda en recuperarse del virus
 
@@ -88,18 +88,18 @@ void printProgress(double percentage);
 void guardar_estado(Persona **mundo, long iteracion);
 void crear_o_borrar_archivos();
 
+int world_rank, world_size, personas_procesador;
 
 int main(int argc, char const *argv[])
 {
 
-    int world_rank, world_size;
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
     MPI_Comm_size(MPI_COMM_WORLD, &world_size);
 
     assert(TAMANNO_MUNDO * TAMANNO_MUNDO > TAMANNO_POBLACION);
 
-    srand(time(NULL));
+    srand(time(NULL) * world_rank);
 
     if (argc != 3)
     {
@@ -125,17 +125,16 @@ int main(int argc, char const *argv[])
         MPI_Abort(MPI_COMM_WORLD, 1);
     }
 
-  if (world_rank == 0) 
-  {
+    personas_procesador = TAMANNO_POBLACION / world_size;
 
     int total_vacunados = (TAMANNO_POBLACION * PORCENTAJE_INMUNE) / 100;
+    int total_vacunados_por_procesador = total_vacunados/world_size;
 
-    int gente_a_vacunar_por_iteracion = total_vacunados / (iteraciones - COMIENZO_VACUNACION); //Calculos necesarios para saber cuantas personas hay que vacunar en cada iteracion
+    int gente_a_vacunar_por_iteracion = total_vacunados_por_procesador / (iteraciones - COMIENZO_VACUNACION); //Calculos necesarios para saber cuantas personas hay que vacunar en cada iteracion
 
     if (gente_a_vacunar_por_iteracion == 0) 
         gente_a_vacunar_por_iteracion = 1;
 
-   
     Persona **mundo = malloc(TAMANNO_MUNDO * TAMANNO_MUNDO * sizeof(Persona *)); // "Tablero" que representara el mundo en una matriz 2D
     if (mundo == NULL)
     {
@@ -143,15 +142,22 @@ int main(int argc, char const *argv[])
         return 1;
     }
 
-    crear_o_borrar_archivos();
-    printf("Inicializando mundo...\n");
+    if (world_rank == 0) 
+    {
+        crear_o_borrar_archivos();
+        printf("Inicializando mundo...\n");
+    }
+    
     inicializar_mundo(mundo);
+    MPI_Barrier(MPI_COMM_WORLD);
 
+    if (world_rank == 0) 
+    {
 #ifdef DEBUG
-    printf("Situacion inicial\n");
-
-    dibujar_mundo(mundo);
+        printf("Situacion inicial\n");
+        dibujar_mundo(mundo);
 #endif
+    }
     long iteraciones_realizadas = 0;
     int comenzar_vacunacion = 0; 
     int gente_vacunada_en_ciclo = 0;
@@ -165,12 +171,14 @@ int main(int argc, char const *argv[])
 
     double tiempo_transcurrido;
 
-   
-    printf("Comienza la simulacion...\n");
-    printProgress(porcentaje_completado);
+    if (world_rank == 0) 
+    {
+        printf("Comienza la simulacion...\n");
+        printProgress(porcentaje_completado);
 #ifdef DEBUG
-    printf("\n");
+        printf("\n");
 #endif
+    }
     inicio = clock();
     for (iteraciones_realizadas; iteraciones_realizadas < iteraciones; iteraciones_realizadas++)
     {
@@ -188,44 +196,50 @@ int main(int argc, char const *argv[])
         }
         
         porcentaje_completado = (double) iteraciones_realizadas / (double )iteraciones;
-        printProgress(porcentaje_completado);
 
+        if (world_rank == 0) 
+        {
+            printProgress(porcentaje_completado);
+        
 #ifdef DEBUG
-        printf("Iteracion %d: \n", iteraciones_realizadas + 1);
-
-        dibujar_mundo(mundo);
+            printf("Iteracion %d: \n", iteraciones_realizadas + 1);
+            dibujar_mundo(mundo);
 #endif
+        }
     }
     final = clock();
     tiempo_transcurrido = ((double)final - (double)inicio) / CLOCKS_PER_SEC;
-    printProgress(1.0);
-    printf("\nTerminado!!!\n");
 
     recoger_metricas(mundo);
 
-    printf("Tiempo transcurrido: %f segundos\n",tiempo_transcurrido);
-
-
-    struct rusage r_usage;
-
-    int ret = getrusage(RUSAGE_SELF,&r_usage);
-    if(ret != 0)
-        printf("Error obteniendo la cantidad de memoria usada\n");
-    else
-        printf("Uso de memoria: %ld kilobytes\n", r_usage.ru_maxrss);
-    //Liberamos la memoria asignada
-    int i, j;
-    for (i = 0; i < TAMANNO_MUNDO; i++)
+    if (world_rank == 0) 
     {
-        for (j = 0; j < TAMANNO_MUNDO; j++)
+        printProgress(1.0);
+        printf("\nTerminado!!!\n");
+        printf("Tiempo transcurrido: %f segundos\n",tiempo_transcurrido);
+
+
+        struct rusage r_usage;
+
+        int ret = getrusage(RUSAGE_SELF,&r_usage);
+        if(ret != 0)
+            printf("Error obteniendo la cantidad de memoria usada\n");
+        else
+            printf("Uso de memoria: %ld kilobytes\n", r_usage.ru_maxrss);
+        //Liberamos la memoria asignada
+        int i, j;
+        for (i = 0; i < TAMANNO_MUNDO; i++)
         {
-            if (mundo[i + j * TAMANNO_MUNDO] != NULL)
-                free(mundo[i + j * TAMANNO_MUNDO]);
+            for (j = 0; j < TAMANNO_MUNDO; j++)
+            {
+                if (mundo[i + j * TAMANNO_MUNDO] != NULL)
+                    free(mundo[i + j * TAMANNO_MUNDO]);
+            }
         }
+
+        free(mundo);
     }
 
-    free(mundo);
-  }
   MPI_Finalize();
 
 }
@@ -298,10 +312,7 @@ void simular_ciclo(Persona **mundo, int comenzar_vacunacion, int gente_a_vacunar
 
 void recoger_metricas(Persona **mundo)
 {
-    int cantidad_infectados = 0;
-    int cantidad_fallecidos = 0;
-    int cantidad_vacunados = 0;
-    int cantidad_recuperados = 0;
+    int recogida_metricas[4] = {0,0,0,0};
     int i, j;
     for (i = 0; i < TAMANNO_MUNDO; i++)
     {
@@ -311,34 +322,61 @@ void recoger_metricas(Persona **mundo)
             {
                 if (mundo[i + j * TAMANNO_MUNDO]->estado == INFECTADO_ASINTOMATICO || mundo[i + j * TAMANNO_MUNDO]->estado == INFECTADO_SINTOMATICO)
                 {
-                    cantidad_infectados++;
+                    recogida_metricas[0]++;
                 }
                 else if (mundo[i + j * TAMANNO_MUNDO]->estado == FALLECIDO)
                 {
-                    cantidad_fallecidos++;
+                    recogida_metricas[1]++;
                 }
                 else if (mundo[i + j * TAMANNO_MUNDO]->estado == VACUNADO)
                 {
-                    cantidad_vacunados++;
+                    recogida_metricas[2]++;
                 }
                  else if (mundo[i + j * TAMANNO_MUNDO]->estado == RECUPERADO)
                 {
-                    cantidad_recuperados++;
+                    recogida_metricas[3]++;
                 }
             }
         }
     }
-    
-    //Dejamos los resultados finales de las metricas en el fichero "practica_SCP.metricas"
-    FILE* fichero;
-    fichero = fopen("practica_SCP.metricas", "wt");
-    fprintf(fichero, "Tamanno Poblacion : %d, Infectados: %d, Fallecidos: %d, Vacunados: %d, Recuperados: %d\n", TAMANNO_POBLACION, cantidad_infectados, cantidad_fallecidos, cantidad_vacunados,cantidad_recuperados);
-    fclose(fichero);
 
-    printf("Tamanno Poblacion : %d, Infectados: %d, Fallecidos: %d, Vacunados: %d, Recuperados: %d\n", TAMANNO_POBLACION, cantidad_infectados, cantidad_fallecidos, cantidad_vacunados,cantidad_recuperados);
-    if (TAMANNO_POBLACION == cantidad_fallecidos)
+    //El procesador 0 recoge los datos de los demás procesadores 
+    int rank;
+    for (rank=1; rank++; rank<world_size)
     {
-        printf("Bye Bye Raccoon City\n");
+        if (world_rank == rank)
+        {
+            printf("Soy %d, rank = %d y envio mis metricas\n", world_rank,rank);
+            fflush(stdout);
+            MPI_Send(recogida_metricas, 4, MPI_INT, 0, 0, MPI_COMM_WORLD);
+            MPI_Barrier(MPI_COMM_WORLD);
+
+        }
+    }
+
+    if (world_rank == 0)
+    {
+        int recogida_metricas_tmp[4];
+        for (i=1; i++; i<world_size)
+        {
+            MPI_Recv(recogida_metricas_tmp, 4, MPI_INT, i, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            recogida_metricas[0] += recogida_metricas_tmp[0];
+            recogida_metricas[1] += recogida_metricas_tmp[1];
+            recogida_metricas[2] += recogida_metricas_tmp[2];
+            recogida_metricas[3] += recogida_metricas_tmp[3];
+        }
+    
+        //Dejamos los resultados finales de las metricas en el fichero "practica_SCP.metricas"
+        FILE* fichero;
+        fichero = fopen("practica_SCP.metricas", "wt");
+        fprintf(fichero, "Tamanno Poblacion : %d, Infectados: %d, Fallecidos: %d, Vacunados: %d, Recuperados: %d\n", TAMANNO_POBLACION, recogida_metricas[0], recogida_metricas[1], recogida_metricas[2],recogida_metricas[3]);
+        fclose(fichero);
+
+        printf("Tamanno Poblacion : %d, Infectados: %d, Fallecidos: %d, Vacunados: %d, Recuperados: %d\n", TAMANNO_POBLACION, recogida_metricas[0], recogida_metricas[1], recogida_metricas[2],recogida_metricas[3]);
+        if (TAMANNO_POBLACION == recogida_metricas[1])
+        {
+            printf("Bye Bye Raccoon City\n");
+        }
     }
 }
 void infectar(Persona **mundo, Tupla posicion_persona)
@@ -434,7 +472,7 @@ void inicializar_mundo(Persona **mundo)
 
     k = 0; //Usado para indexar el vector de las posiciones
     Tupla posiciones_asignadas[TAMANNO_POBLACION] = {{0, 0}};
-    for (i = 0; i < TAMANNO_POBLACION; i++)
+    for (i = 0; i < personas_procesador; i++)
     {
         Persona *persona_tmp = malloc(sizeof(Persona));
         persona_tmp->edad = random_interval(0, 110);
@@ -444,10 +482,12 @@ void inicializar_mundo(Persona **mundo)
         persona_tmp->se_ha_movido = 0;
 
 #ifdef DEBUG
-        persona_tmp->identificador = i + 1;
+        persona_tmp->identificador = (personas_procesador * world_rank) + i + 1;
 #endif
 
         Tupla pos;
+
+        //En distintos procesadores puede haber personas en la misma posición.
 
         int flag = 0; // 0 si no existe nadie en esa posicion, 1 en el caso contrario.
         do
@@ -469,7 +509,7 @@ void inicializar_mundo(Persona **mundo)
         persona_tmp->velocidad = vel;
 
 
-        if (i == 0) //Elegimos el paciente 0
+        if (i == 0 && world_rank == 0) //Elegimos el paciente 0
         {
             persona_tmp->estado = INFECTADO_SINTOMATICO;
             #ifdef DEBUG
@@ -482,7 +522,7 @@ void inicializar_mundo(Persona **mundo)
         }
         mundo[pos.val1 + pos.val2 * TAMANNO_MUNDO] = persona_tmp;
 #ifdef DEBUG
-        printf("Posicion persona: (%d,%d), estado : %d\n", persona_tmp->posicion.val1, persona_tmp->posicion.val2, mundo[pos.val1 + pos.val2 * TAMANNO_MUNDO]->estado);
+        printf("Procesador %d, persona %d, posicion (%d,%d)\n",world_rank,persona_tmp->identificador, persona_tmp->posicion.val1, persona_tmp->posicion.val2);
 #endif   
     }
 }
@@ -622,7 +662,8 @@ int probabilidad_muerte(int edad)
 }
 
 //Barra de progreso. Sacado de https://stackoverflow.com/questions/14539867/how-to-display-a-progress-indicator-in-pure-c-c-cout-printf
-void printProgress(double percentage) {
+void printProgress(double percentage)
+{
     int val = (int) (percentage * 100);
     int lpad = (int) (percentage * PBWIDTH);
     int rpad = PBWIDTH - lpad;
