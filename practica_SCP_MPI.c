@@ -63,8 +63,8 @@ typedef struct
 #define VELOCIDAD_MAX 1 //Define la velocidad maxima a la que una persona podra viajar por el mundo. El numero indica el numero de "casillas"
 #define RADIO 1         //Define el radio de infeccion de una persona infectada
 #define PORCENTAJE_INMUNE 70    //Define el porcentaje de población que queremos vacunar para el final de la ejecucion
-#define PROBABILIDAD_CONTAGIO 50 //Define en porcentaje la probabilidad de infectar a alguien que este dentro del radio
-#define COMIENZO_VACUNACION 4    //Define la iteración en la que queremos comenzar a vacunar a gente
+#define PROBABILIDAD_CONTAGIO 100 //Define en porcentaje la probabilidad de infectar a alguien que este dentro del radio
+#define COMIENZO_VACUNACION 5    //Define la iteración en la que queremos comenzar a vacunar a gente
 #define PERIODO_INCUBACION 14  //Define cuantos ciclos debe durar la incubacion del virus, hasta que este sea capaz de infectar
 #define PERIODO_RECUPERACION 20 // Define cuantos ciclos se tarda en recuperarse del virus
 
@@ -81,7 +81,7 @@ int random_interval(int min, int max);
 Tupla mover_persona(Persona **mundo, Persona *persona);
 void recoger_metricas(Persona **mundo);
 void infectar(Persona **mundo, Tupla posicion_persona);
-void deberia_morir(Persona **mundo, Tupla posicion_persona);
+int deberia_morir(Persona **mundo, Tupla posicion_persona);
 void vacunar(Persona **mundo);
 int probabilidad_muerte(int edad);
 void printProgress(double percentage);
@@ -210,12 +210,17 @@ int main(int argc, char const *argv[])
     final = clock();
     tiempo_transcurrido = ((double)final - (double)inicio) / CLOCKS_PER_SEC;
 
-    recoger_metricas(mundo);
-
     if (world_rank == 0) 
     {
         printProgress(1.0);
         printf("\nTerminado!!!\n");
+    }
+
+    recoger_metricas(mundo);
+
+    if (world_rank == 0) 
+    {
+
         printf("Tiempo transcurrido: %f segundos\n",tiempo_transcurrido);
 
 
@@ -252,10 +257,14 @@ void simular_ciclo(Persona **mundo, int comenzar_vacunacion, int gente_a_vacunar
 {
     int i, j;
     int gente_vacunada_en_ciclo = 0;
+    int hay_que_infectar_procesador = 0;
+    int hay_que_infectar_total = 0;
     for (i = 0; i < TAMANNO_MUNDO; i++)
     {
         for (j = 0; j < TAMANNO_MUNDO; j++)
         {
+            hay_que_infectar_procesador = 0;
+            hay_que_infectar_total = 0;
             if (mundo[i + j * TAMANNO_MUNDO] != NULL) //FIXME esta busqueda se puede optimizar si guardamos las posiciones de las personas que estan en la matriz... :)
             {
                 Persona *persona_tmp = mundo[i + j * TAMANNO_MUNDO];
@@ -276,10 +285,13 @@ void simular_ciclo(Persona **mundo, int comenzar_vacunacion, int gente_a_vacunar
                         }
                         else
                         {
-                            infectar(mundo, pos_persona);
-
-                            deberia_morir(mundo, pos_persona);
-                            mundo[pos_persona.val1 + pos_persona.val2 * TAMANNO_MUNDO]->ciclos_desde_infeccion++;
+                            //infectar(mundo, pos_persona);
+                            if (deberia_morir(mundo, pos_persona) == 1)
+                            {
+                                mundo[pos_persona.val1 + pos_persona.val2 * TAMANNO_MUNDO]->ciclos_desde_infeccion++;
+                                hay_que_infectar_procesador = 1;
+                            }
+                            
                         }
                         break;
 
@@ -305,6 +317,16 @@ void simular_ciclo(Persona **mundo, int comenzar_vacunacion, int gente_a_vacunar
                     }
                     
                 }
+            }
+            MPI_Allreduce(&hay_que_infectar_procesador, &hay_que_infectar_total,1,MPI_INT,MPI_MAX,MPI_COMM_WORLD);
+            if (hay_que_infectar_total == 1)
+            {
+                Tupla posicion_tmp;
+                posicion_tmp.val1 = i;
+                posicion_tmp.val2 = j;
+                infectar(mundo,posicion_tmp);
+                printf("%d infectando posicion (%d,%d)\n",world_rank, i, j);
+                fflush(stdout);
             }
         }
     }
@@ -342,7 +364,7 @@ void recoger_metricas(Persona **mundo)
 
     //El procesador 0 recoge los datos de los demás procesadores 
 
-
+    MPI_Barrier(MPI_COMM_WORLD);
     int metricas_totales[4];
     MPI_Reduce(recogida_metricas, metricas_totales,4,MPI_INT,MPI_SUM,0,MPI_COMM_WORLD);
 
@@ -394,7 +416,8 @@ void infectar(Persona **mundo, Tupla posicion_persona)
         }
     }
 }
-void deberia_morir(Persona **mundo, Tupla posicion_persona)
+//Devuelve 0 si deberia morir
+int deberia_morir(Persona **mundo, Tupla posicion_persona)
 {
     int muerto, prob_muerte;
     muerto = random_interval(0, 100000);
@@ -402,7 +425,12 @@ void deberia_morir(Persona **mundo, Tupla posicion_persona)
     if (muerto < prob_muerte)
     {
         mundo[posicion_persona.val1 + posicion_persona.val2 * TAMANNO_MUNDO]->estado = FALLECIDO;
+        return 0;
     }
+    else
+    {
+        return 1;
+    } 
 }
 Tupla mover_persona(Persona **mundo, Persona *persona)
 {
@@ -530,8 +558,11 @@ void guardar_estado(Persona **mundo, long iteracion)
     int i, j;
 
     FILE* archivo = fopen("practica_SCP.pos","a");
-    fprintf(archivo,"ITERACION %d TAMANNO %d POBLACION %d\n",iteracion, TAMANNO_MUNDO, TAMANNO_POBLACION);
-    fflush(archivo);
+    if (world_rank == 0)
+    {
+        fprintf(archivo,"ITERACION %d TAMANNO %d POBLACION %d\n",iteracion, TAMANNO_MUNDO, TAMANNO_POBLACION);
+        fflush(archivo);
+    }
     for (i = 0; i < TAMANNO_MUNDO; i++)
     {
         for (j = 0; j < TAMANNO_MUNDO; j++)
