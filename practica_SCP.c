@@ -97,7 +97,7 @@ int main(int argc, char const *argv[])
         printf("Uso: ./practica_scp <numero_de_iteraciones> <frecuencia_batches>\n");
         return 0;
     }
-    long iteraciones = atol(argv[1]); //Numero de iteraciones a realizar.
+    long iteraciones = atol(argv[1]); //Numero de iteraciones a realizar
     long frecuencia_batches = atol(argv[2]); //Cada cuanto se debe guardar el estado del mundo
     if (COMIENZO_VACUNACION >= iteraciones)
     {
